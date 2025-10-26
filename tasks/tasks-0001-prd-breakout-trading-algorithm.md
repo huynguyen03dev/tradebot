@@ -30,15 +30,15 @@ Generated from: `0001-prd-breakout-trading-algorithm.md`
   - [x] 2.6 Add error handling for MT5 connection failures with `mt5.last_error()` calls
   - [x] 2.7 Add validation for date range (start < end) and data availability
   - [x] 2.8 Implement MT5 shutdown function to be called at script end
-- [ ] 3.0 Implement breakout detection algorithm
-  - [ ] 3.1 Create `Trade` class with attributes: entry_time, entry_price, exit_time, exit_price, direction (BUY/SELL), position_size, profit_loss
-  - [ ] 3.2 Create `BreakoutStrategy` class with initialization method accepting lookback_period parameter
-  - [ ] 3.3 Implement method to calculate resistance level (highest high over lookback period)
-  - [ ] 3.4 Implement method to calculate support level (lowest low over lookback period)
-  - [ ] 3.5 Implement method to detect bullish breakout (close price > resistance level)
-  - [ ] 3.6 Implement method to detect bearish breakout (close price < support level)
-  - [ ] 3.7 Create method to generate trading signals (BUY on bullish breakout, SELL on bearish breakout, None otherwise)
-  - [ ] 3.8 Add logic to prevent multiple signals while already in a position
+- [x] 3.0 Implement breakout detection algorithm
+  - [x] 3.1 Create `Trade` class with attributes: entry_time, entry_price, exit_time, exit_price, direction (BUY/SELL), position_size, profit_loss
+  - [x] 3.2 Create `BreakoutStrategy` class with initialization method accepting lookback_period parameter
+  - [x] 3.3 Implement method to calculate resistance level (highest high over lookback period)
+  - [x] 3.4 Implement method to calculate support level (lowest low over lookback period)
+  - [x] 3.5 Implement method to detect bullish breakout (close price > resistance level)
+  - [x] 3.6 Implement method to detect bearish breakout (close price < support level)
+  - [x] 3.7 Create method to generate trading signals (BUY on bullish breakout, SELL on bearish breakout, None otherwise)
+  - [x] 3.8 Add logic to prevent multiple signals while already in a position
 - [ ] 4.0 Build backtesting engine with trade simulation
   - [ ] 4.1 Create `Backtester` class with initialization accepting strategy, data, starting_balance, and position_size_pct
   - [ ] 4.2 Implement main backtest loop that iterates through historical candles

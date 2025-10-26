@@ -211,3 +211,227 @@ def shutdown_mt5():
     """
     mt5.shutdown()
     print("MT5 connection closed")
+
+
+# ============================================================================
+# TRADING CLASSES
+# ============================================================================
+
+class Trade:
+    """
+    Represents a single trade with entry and exit information.
+    
+    Attributes:
+        entry_time (datetime): Timestamp when trade was entered
+        entry_price (float): Price at which trade was entered
+        exit_time (datetime): Timestamp when trade was exited (None if still open)
+        exit_price (float): Price at which trade was exited (None if still open)
+        direction (str): Trade direction, either "BUY" or "SELL"
+        position_size (float): Size of the position in lots/units
+        profit_loss (float): Profit or loss in USD (None until trade is closed)
+    """
+    
+    def __init__(self, entry_time, entry_price, direction, position_size):
+        """
+        Initialize a new trade.
+        
+        Args:
+            entry_time (datetime): Timestamp when trade was entered
+            entry_price (float): Price at which trade was entered
+            direction (str): Trade direction, either "BUY" or "SELL"
+            position_size (float): Size of the position in lots/units
+        """
+        self.entry_time = entry_time
+        self.entry_price = entry_price
+        self.exit_time = None
+        self.exit_price = None
+        self.direction = direction
+        self.position_size = position_size
+        self.profit_loss = None
+    
+    def close(self, exit_time, exit_price):
+        """
+        Close the trade and calculate profit/loss.
+        
+        Args:
+            exit_time (datetime): Timestamp when trade was exited
+            exit_price (float): Price at which trade was exited
+        """
+        self.exit_time = exit_time
+        self.exit_price = exit_price
+        
+        # Calculate P/L based on direction
+        if self.direction == "BUY":
+            # BUY: profit when price goes up
+            self.profit_loss = (exit_price - self.entry_price) * self.position_size
+        elif self.direction == "SELL":
+            # SELL: profit when price goes down
+            self.profit_loss = (self.entry_price - exit_price) * self.position_size
+        else:
+            raise ValueError(f"Invalid trade direction: {self.direction}")
+    
+    def is_open(self):
+        """
+        Check if trade is still open.
+        
+        Returns:
+            bool: True if trade is open, False if closed
+        """
+        return self.exit_time is None
+
+
+class BreakoutStrategy:
+    """
+    Breakout trading strategy that identifies support and resistance levels
+    and generates trading signals when price breaks through these levels.
+    
+    The strategy looks back over a configurable period to find the highest high
+    (resistance) and lowest low (support). When price closes above resistance,
+    a BUY signal is generated. When price closes below support, a SELL signal
+    is generated.
+    
+    Attributes:
+        lookback_period (int): Number of candles to use for calculating support/resistance
+    """
+    
+    def __init__(self, lookback_period=20):
+        """
+        Initialize the breakout strategy.
+        
+        Args:
+            lookback_period (int): Number of candles to look back for support/resistance
+                                   Default is 20 candles
+        """
+        self.lookback_period = lookback_period
+    
+    def calculate_resistance(self, data, current_index):
+        """
+        Calculate resistance level as the highest high over the lookback period.
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing price data with 'high' column
+            current_index (int): Current candle index in the DataFrame
+        
+        Returns:
+            float: Resistance level (highest high), or None if insufficient data
+        """
+        # Check if we have enough data for lookback period
+        if current_index < self.lookback_period:
+            return None
+        
+        # Get the lookback window (excluding current candle)
+        start_index = current_index - self.lookback_period
+        end_index = current_index
+        
+        # Calculate resistance as the highest high in the lookback period
+        resistance = data.iloc[start_index:end_index]['high'].max()
+        
+        return resistance
+    
+    def calculate_support(self, data, current_index):
+        """
+        Calculate support level as the lowest low over the lookback period.
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing price data with 'low' column
+            current_index (int): Current candle index in the DataFrame
+        
+        Returns:
+            float: Support level (lowest low), or None if insufficient data
+        """
+        # Check if we have enough data for lookback period
+        if current_index < self.lookback_period:
+            return None
+        
+        # Get the lookback window (excluding current candle)
+        start_index = current_index - self.lookback_period
+        end_index = current_index
+        
+        # Calculate support as the lowest low in the lookback period
+        support = data.iloc[start_index:end_index]['low'].min()
+        
+        return support
+    
+    def detect_bullish_breakout(self, data, current_index):
+        """
+        Detect bullish breakout when close price breaks above resistance level.
+        
+        A bullish breakout occurs when the current candle's close price is higher
+        than the resistance level (highest high over the lookback period).
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing price data with 'close' column
+            current_index (int): Current candle index in the DataFrame
+        
+        Returns:
+            bool: True if bullish breakout detected, False otherwise
+        """
+        # Calculate resistance level
+        resistance = self.calculate_resistance(data, current_index)
+        
+        # If we don't have enough data, no breakout
+        if resistance is None:
+            return False
+        
+        # Get current close price
+        current_close = data.iloc[current_index]['close']
+        
+        # Bullish breakout: close price > resistance
+        return current_close > resistance
+    
+    def detect_bearish_breakout(self, data, current_index):
+        """
+        Detect bearish breakout when close price breaks below support level.
+        
+        A bearish breakout occurs when the current candle's close price is lower
+        than the support level (lowest low over the lookback period).
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing price data with 'close' column
+            current_index (int): Current candle index in the DataFrame
+        
+        Returns:
+            bool: True if bearish breakout detected, False otherwise
+        """
+        # Calculate support level
+        support = self.calculate_support(data, current_index)
+        
+        # If we don't have enough data, no breakout
+        if support is None:
+            return False
+        
+        # Get current close price
+        current_close = data.iloc[current_index]['close']
+        
+        # Bearish breakout: close price < support
+        return current_close < support
+    
+    def generate_signal(self, data, current_index, in_position=False):
+        """
+        Generate trading signal based on breakout detection.
+        
+        Returns "BUY" on bullish breakout, "SELL" on bearish breakout, or None
+        if no signal is generated. Prevents multiple signals while already in a position.
+        
+        Args:
+            data (pd.DataFrame): DataFrame containing price data
+            current_index (int): Current candle index in the DataFrame
+            in_position (bool): Whether currently in an open position (default False)
+        
+        Returns:
+            str: "BUY", "SELL", or None
+        """
+        # If already in a position, don't generate new entry signals
+        if in_position:
+            return None
+        
+        # Check for bullish breakout
+        if self.detect_bullish_breakout(data, current_index):
+            return "BUY"
+        
+        # Check for bearish breakout
+        if self.detect_bearish_breakout(data, current_index):
+            return "SELL"
+        
+        # No breakout detected
+        return None
