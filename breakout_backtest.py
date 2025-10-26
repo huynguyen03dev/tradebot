@@ -1,18 +1,20 @@
 """
 Breakout Trading Algorithm with Backtesting
 
-This script implements a breakout trading strategy for AUD/USD on 5-minute charts.
+This script implements a breakout trading strategy for XAU/USD (Gold) on 5-minute charts.
 It identifies when price breaks through support or resistance levels and simulates
 trades to evaluate the strategy's historical performance.
 
 Configuration Parameters:
-- SYMBOL: Trading pair (default: AUDUSD)
+- SYMBOL: Trading pair (default: XAUUSD)
 - TIMEFRAME: Chart timeframe (default: 5-minute)
 - START_DATE: Backtest start date
 - END_DATE: Backtest end date
 - STARTING_BALANCE: Initial account balance in USD
-- POSITION_SIZE_PCT: Percentage of balance to risk per trade
+- VOLUME_LOTS: Fixed volume per trade in lots (default: 0.01)
 - LOOKBACK_PERIOD: Number of candles to determine support/resistance levels
+- TAKE_PROFIT_POINTS: Take profit level in price points (default: 10)
+- STOP_LOSS_POINTS: Stop loss level in price points (default: 5)
 
 Results Include:
 - Total number of trades
@@ -27,29 +29,41 @@ import MetaTrader5 as mt5
 import pandas as pd
 import pytz
 import os
+import sys
+import builtins
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, will try to read .env manually
 
 # ============================================================================
 # CONFIGURATION PARAMETERS
 # ============================================================================
 
 # Trading symbol
-SYMBOL = "AUDUSD"
+SYMBOL = "XAUUSD"
 
 # Timeframe for analysis (5-minute chart)
 TIMEFRAME = mt5.TIMEFRAME_M5
 
 # Backtest date range
-START_DATE = datetime(2024, 1, 1, tzinfo=pytz.UTC)
-END_DATE = datetime(2024, 3, 31, tzinfo=pytz.UTC)
+START_DATE = datetime(2024, 11, 1, tzinfo=pytz.UTC)
+END_DATE = datetime(2025, 10, 1, tzinfo=pytz.UTC)
 
 # Account settings
-STARTING_BALANCE = 10000.0  # USD
+STARTING_BALANCE = 100.0  # USD
 
-# Position sizing (percentage of balance per trade)
-POSITION_SIZE_PCT = 2.0  # 2% of balance per trade
+# Position sizing (fixed lot size)
+VOLUME_LOTS = 0.01  # Fixed volume in lots per trade
 
 # Strategy parameters
-LOOKBACK_PERIOD = 20  # Number of candles to identify support/resistance levels
+LOOKBACK_PERIOD = 22  # Number of candles to identify support/resistance levels
+TAKE_PROFIT_POINTS = 30.0  # Take profit in price points
+STOP_LOSS_POINTS = 5.0  # Stop loss in price points
+MAX_HOLD_CANDLES = None  # No maximum hold time - only exit on TP/SL
 
 
 # ============================================================================
@@ -227,11 +241,14 @@ class Trade:
         exit_time (datetime): Timestamp when trade was exited (None if still open)
         exit_price (float): Price at which trade was exited (None if still open)
         direction (str): Trade direction, either "BUY" or "SELL"
-        position_size (float): Size of the position in lots/units
+        position_size (float): Size of the position in units (base currency)
+        volume (float): Size of the position in lots (standard forex volume)
         profit_loss (float): Profit or loss in USD (None until trade is closed)
+        entry_index (int): Index of candle when trade was entered
+        exit_reason (str): Reason for exit (TP, SL, MAX_HOLD, OPPOSITE_SIGNAL, END)
     """
     
-    def __init__(self, entry_time, entry_price, direction, position_size):
+    def __init__(self, entry_time, entry_price, direction, position_size, volume, entry_index):
         """
         Initialize a new trade.
         
@@ -239,7 +256,9 @@ class Trade:
             entry_time (datetime): Timestamp when trade was entered
             entry_price (float): Price at which trade was entered
             direction (str): Trade direction, either "BUY" or "SELL"
-            position_size (float): Size of the position in lots/units
+            position_size (float): Size of the position in units (base currency)
+            volume (float): Size of the position in lots
+            entry_index (int): Index of candle when trade was entered
         """
         self.entry_time = entry_time
         self.entry_price = entry_price
@@ -247,28 +266,43 @@ class Trade:
         self.exit_price = None
         self.direction = direction
         self.position_size = position_size
+        self.volume = volume
         self.profit_loss = None
+        self.entry_index = entry_index
+        self.exit_reason = None
     
-    def close(self, exit_time, exit_price):
+    def close(self, exit_time, exit_price, exit_reason="MANUAL"):
         """
         Close the trade and calculate profit/loss.
+        
+        For XAUUSD (Gold): Profit = Price Difference × Volume (lots) × 100
+        Example: 5 points movement with 0.01 lot = 5 × 0.01 × 100 = $5
         
         Args:
             exit_time (datetime): Timestamp when trade was exited
             exit_price (float): Price at which trade was exited
+            exit_reason (str): Reason for exit (TP, SL, MAX_HOLD, OPPOSITE_SIGNAL, END)
         """
         self.exit_time = exit_time
         self.exit_price = exit_price
+        self.exit_reason = exit_reason
         
         # Calculate P/L based on direction
+        # For XAUUSD: profit = price_diff × volume_lots × 100
+        price_diff = 0
         if self.direction == "BUY":
             # BUY: profit when price goes up
-            self.profit_loss = (exit_price - self.entry_price) * self.position_size
+            price_diff = exit_price - self.entry_price
         elif self.direction == "SELL":
             # SELL: profit when price goes down
-            self.profit_loss = (self.entry_price - exit_price) * self.position_size
+            price_diff = self.entry_price - exit_price
         else:
             raise ValueError(f"Invalid trade direction: {self.direction}")
+        
+        # XAUUSD calculation: 1 point = $1 per 0.01 lot
+        # So for 0.01 lot: profit = price_diff × 0.01 × 100 = price_diff × 1
+        # For any lot size: profit = price_diff × volume × 100
+        self.profit_loss = price_diff * self.volume * 100
     
     def is_open(self):
         """
@@ -454,7 +488,8 @@ class Backtester:
         current_trade (Trade): Currently open trade (None if no open position)
     """
     
-    def __init__(self, strategy, data, starting_balance=10000.0, position_size_pct=2.0):
+    def __init__(self, strategy, data, starting_balance=10000.0, volume_lots=0.01, 
+                 take_profit_points=10.0, stop_loss_points=5.0, max_hold_candles=10):
         """
         Initialize the backtester.
         
@@ -462,15 +497,21 @@ class Backtester:
             strategy (BreakoutStrategy): Trading strategy instance to use for signal generation
             data (pd.DataFrame): Historical price data with columns: time, open, high, low, close
             starting_balance (float): Initial account balance in USD (default 10000.0)
-            position_size_pct (float): Percentage of balance to use per trade (default 2.0%)
+            volume_lots (float): Fixed volume in lots per trade (default 0.01)
+            take_profit_points (float): Take profit in price points (default 10.0)
+            stop_loss_points (float): Stop loss in price points (default 5.0)
+            max_hold_candles (int): Maximum candles to hold trade (default 10)
         """
         self.strategy = strategy
         self.data = data
         self.starting_balance = starting_balance
-        self.position_size_pct = position_size_pct
+        self.volume_lots = volume_lots
         self.balance = starting_balance
         self.trades = []
         self.current_trade = None
+        self.take_profit_points = take_profit_points
+        self.stop_loss_points = stop_loss_points
+        self.max_hold_candles = max_hold_candles
     
     def is_in_position(self):
         """
@@ -481,31 +522,87 @@ class Backtester:
         """
         return self.current_trade is not None
     
-    def enter_trade(self, entry_time, entry_price, direction):
+    def enter_trade(self, entry_time, entry_price, direction, entry_index):
         """
         Enter a new trade by creating a Trade object.
         
-        Calculates position size based on the configured percentage of current balance
-        and the entry price. Position size represents the amount in USD to trade.
+        Uses fixed volume in lots. Position size in units is calculated as:
+        position_size = volume_lots * 100,000 (for standard lot size)
         
         Args:
             entry_time (datetime): Timestamp when entering the trade
             entry_price (float): Price at which to enter the trade
             direction (str): Trade direction, either "BUY" or "SELL"
+            entry_index (int): Index of candle when entering the trade
         """
-        # Calculate position size in USD based on percentage of balance
-        position_size_usd = self.balance * (self.position_size_pct / 100.0)
+        # Use fixed volume in lots
+        volume = self.volume_lots
         
-        # For forex, position size is typically in units of the base currency
-        # Position size = USD amount / price
-        position_size = position_size_usd / entry_price
+        # Calculate position size in units (1 standard lot = 100,000 units)
+        position_size = volume * 100000.0
+        
+        # Calculate position size in USD (for display purposes)
+        position_size_usd = position_size * entry_price
         
         # Create new trade
-        self.current_trade = Trade(entry_time, entry_price, direction, position_size)
+        self.current_trade = Trade(entry_time, entry_price, direction, position_size, volume, entry_index)
         
-        print(f"  ENTRY: {direction} at {entry_price:.5f} | Position: ${position_size_usd:.2f} ({position_size:.2f} units) | Time: {entry_time}")
+        print(f"  ENTRY: {direction} at {entry_price:.2f} | Volume: {volume:.2f} lots | Position: ${position_size_usd:.2f} ({position_size:.0f} units) | Time: {entry_time}")
     
-    def exit_trade(self, exit_time, exit_price):
+    def check_exit_conditions(self, current_index, current_high, current_low, current_close):
+        """
+        Check if current trade should be exited based on TP/SL/MAX_HOLD conditions.
+        
+        Args:
+            current_index (int): Current candle index
+            current_high (float): Current candle high price
+            current_low (float): Current candle low price
+            current_close (float): Current candle close price
+        
+        Returns:
+            tuple: (should_exit, exit_price, exit_reason) or (False, None, None)
+        """
+        if self.current_trade is None:
+            return False, None, None
+        
+        entry_price = self.current_trade.entry_price
+        direction = self.current_trade.direction
+        
+        # Calculate TP and SL price levels based on price points
+        if direction == "BUY":
+            # For BUY: profit when price goes up
+            take_profit_level = entry_price + self.take_profit_points
+            stop_loss_level = entry_price - self.stop_loss_points
+            
+            # Check if high hit TP
+            if current_high >= take_profit_level:
+                return True, take_profit_level, "TP"
+            
+            # Check if low hit SL
+            if current_low <= stop_loss_level:
+                return True, stop_loss_level, "SL"
+        
+        elif direction == "SELL":
+            # For SELL: profit when price goes down
+            take_profit_level = entry_price - self.take_profit_points
+            stop_loss_level = entry_price + self.stop_loss_points
+            
+            # Check if low hit TP
+            if current_low <= take_profit_level:
+                return True, take_profit_level, "TP"
+            
+            # Check if high hit SL
+            if current_high >= stop_loss_level:
+                return True, stop_loss_level, "SL"
+        
+        # Check max hold period
+        candles_held = current_index - self.current_trade.entry_index
+        if self.max_hold_candles is not None and candles_held >= self.max_hold_candles:
+            return True, current_close, "MAX_HOLD"
+        
+        return False, None, None
+    
+    def exit_trade(self, exit_time, exit_price, exit_reason="MANUAL"):
         """
         Exit the current open trade and update balance.
         
@@ -515,13 +612,14 @@ class Backtester:
         Args:
             exit_time (datetime): Timestamp when exiting the trade
             exit_price (float): Price at which to exit the trade
+            exit_reason (str): Reason for exit (TP, SL, MAX_HOLD, OPPOSITE_SIGNAL, END)
         """
         if self.current_trade is None:
             print("ERROR: Attempted to exit trade when no position is open")
             return
         
         # Close the trade and calculate P/L
-        self.current_trade.close(exit_time, exit_price)
+        self.current_trade.close(exit_time, exit_price, exit_reason)
         
         # Update balance with profit/loss
         self.balance += self.current_trade.profit_loss
@@ -531,7 +629,7 @@ class Backtester:
         
         # Print exit information
         pl_str = f"+${self.current_trade.profit_loss:.2f}" if self.current_trade.profit_loss >= 0 else f"-${abs(self.current_trade.profit_loss):.2f}"
-        print(f"  EXIT:  {self.current_trade.direction} at {exit_price:.5f} | P/L: {pl_str} | Balance: ${self.balance:.2f} | Time: {exit_time}")
+        print(f"  EXIT:  {self.current_trade.direction} at {exit_price:.2f} | Volume: {self.current_trade.volume:.2f} lots | P/L: {pl_str} | Reason: {exit_reason} | Balance: ${self.balance:.2f} | Time: {exit_time}")
         
         # Clear current trade
         self.current_trade = None
@@ -541,9 +639,9 @@ class Backtester:
         Run the backtest by iterating through all historical candles.
         
         For each candle:
-        1. Generate trading signal from strategy
-        2. Execute entry if signal received and not in position
-        3. Execute exit if opposite signal received while in position
+        1. Check exit conditions (TP/SL/MAX_HOLD) if in position
+        2. Generate trading signal from strategy
+        3. Execute entry if signal received and not in position
         4. Track all completed trades
         
         Returns:
@@ -551,43 +649,49 @@ class Backtester:
         """
         print(f"Starting backtest with {len(self.data)} candles...")
         print(f"Initial balance: ${self.starting_balance:,.2f}")
-        print(f"Position size: {self.position_size_pct}% of balance")
+        print(f"Fixed volume: {self.volume_lots:.2f} lots per trade")
+        print(f"Take Profit: {self.take_profit_points:.1f} points | Stop Loss: {self.stop_loss_points:.1f} points | Max Hold: {self.max_hold_candles} candles")
         print("-" * 60)
         
         # Iterate through each candle in the historical data
         for i in range(len(self.data)):
             # Show progress indicator every 500 candles
             if i > 0 and i % 500 == 0:
-                print(f"Processing candle {i}/{len(self.data)}...")
-            
-            # Check if we're currently in a position
-            in_position = self.is_in_position()
-            
-            # Generate signal from strategy
-            signal = self.strategy.generate_signal(self.data, i, in_position)
+                print(f"Processing candle {i}/{len(self.data)}... Trades so far: {len(self.trades)}")
             
             # Get current candle data
             candle = self.data.iloc[i]
             current_time = candle['time']
+            current_open = candle['open']
+            current_high = candle['high']
+            current_low = candle['low']
             current_close = candle['close']
             
-            # Trade entry logic: if signal received and not in position, enter trade
-            if signal is not None and not in_position:
-                self.enter_trade(current_time, current_close, signal)
+            # Check if we're currently in a position
+            in_position = self.is_in_position()
             
-            # Trade exit logic: exit on opposite signal
-            # If in position and receive opposite signal, close the trade
-            elif in_position and signal is not None:
-                # Check if signal is opposite to current trade direction
-                if (self.current_trade.direction == "BUY" and signal == "SELL") or \
-                   (self.current_trade.direction == "SELL" and signal == "BUY"):
-                    self.exit_trade(current_time, current_close)
+            # First, check exit conditions if in position
+            if in_position:
+                should_exit, exit_price, exit_reason = self.check_exit_conditions(
+                    i, current_high, current_low, current_close
+                )
+                if should_exit:
+                    self.exit_trade(current_time, exit_price, exit_reason)
+                    in_position = False  # Update position status
+            
+            # Generate signal from strategy (only if not in position)
+            if not in_position:
+                signal = self.strategy.generate_signal(self.data, i, False)
+                
+                # Trade entry logic: if signal received and not in position, enter trade
+                if signal is not None:
+                    self.enter_trade(current_time, current_close, signal, i)
         
         # Handle edge case: if trade is still open at end, force close at last price
         if self.is_in_position():
             last_candle = self.data.iloc[-1]
             print(f"\n  Closing final open trade at last price...")
-            self.exit_trade(last_candle['time'], last_candle['close'])
+            self.exit_trade(last_candle['time'], last_candle['close'], "END")
         
         print("-" * 60)
         print(f"Backtest complete. Processed {len(self.data)} candles.")
@@ -726,7 +830,7 @@ class Backtester:
 def main():
     """
     Main execution function that orchestrates the entire backtest workflow.
-    
+
     Steps:
     1. Initialize MT5 connection
     2. Login to MT5 account (optional - requires credentials)
@@ -738,10 +842,19 @@ def main():
     8. Run backtest
     9. Display results
     10. Shutdown MT5 connection
-    
+
     All steps include proper error handling with try-except-finally to ensure
     MT5 connection is always closed properly.
     """
+    log_file = open('backtest_results.txt', 'w')
+    original_print = builtins.print
+    def my_print(*args, **kwargs):
+        if 'file' not in kwargs:
+            original_print(*args, **kwargs)
+            original_print(*args, file=log_file, **kwargs)
+        else:
+            original_print(*args, **kwargs)
+    builtins.print = my_print
     try:
         # Step 1: Initialize MT5
         print("Initializing MetaTrader 5...")
@@ -749,6 +862,7 @@ def main():
             return
         
         # Step 2: Login (optional - comment out if using terminal's default account)
+        # Note: If MT5 terminal is already running and logged in, this step can be skipped
         # Uncomment the following lines if you want to login to a specific account:
         # if not login_mt5():
         #     return
@@ -779,7 +893,10 @@ def main():
             strategy=strategy,
             data=data,
             starting_balance=STARTING_BALANCE,
-            position_size_pct=POSITION_SIZE_PCT
+            volume_lots=VOLUME_LOTS,
+            take_profit_points=TAKE_PROFIT_POINTS,
+            stop_loss_points=STOP_LOSS_POINTS,
+            max_hold_candles=MAX_HOLD_CANDLES
         )
         
         # Step 8: Run backtest
@@ -799,6 +916,9 @@ def main():
     
     finally:
         # Step 10: Always shutdown MT5 connection
+        builtins.print = original_print
+        if log_file:
+            log_file.close()
         print("\nShutting down MT5 connection...")
         shutdown_mt5()
 
