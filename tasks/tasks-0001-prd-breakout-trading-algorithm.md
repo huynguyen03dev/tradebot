@@ -49,14 +49,14 @@ Generated from: `0001-prd-breakout-trading-algorithm.md`
   - [x] 4.7 Store completed trades in a list for later analysis
   - [x] 4.8 Add progress indicator to show processing status (e.g., print every 500 candles)
   - [x] 4.9 Handle edge case where final trade is still open at backtest end (force close at last price)
-- [ ] 5.0 Implement results calculation and console output
-  - [ ] 5.1 Create method to calculate total number of trades executed
-  - [ ] 5.2 Create method to calculate number of winning trades (profit > 0) and losing trades (profit <= 0)
-  - [ ] 5.3 Calculate winrate percentage (winning trades / total trades * 100)
-  - [ ] 5.4 Calculate total profit/loss by summing all individual trade P/L
-  - [ ] 5.5 Calculate net return percentage ((total P/L / starting balance) * 100)
-  - [ ] 5.6 Format console output with clear section headers and aligned values
-  - [ ] 5.7 Display backtest summary including: backtest period, total trades, winning/losing trades, winrate %, total P/L USD, net return %
-  - [ ] 5.8 Handle zero trades scenario gracefully (display message if no breakouts detected)
-  - [ ] 5.9 Create main execution block that orchestrates: MT5 connection → data retrieval → strategy creation → backtesting → results display → MT5 shutdown
-  - [ ] 5.10 Add try-except-finally block to ensure MT5 shutdown is always called
+- [x] 5.0 Implement results calculation and console output
+  - [x] 5.1 Create method to calculate total number of trades executed
+  - [x] 5.2 Create method to calculate number of winning trades (profit > 0) and losing trades (profit <= 0)
+  - [x] 5.3 Calculate winrate percentage (winning trades / total trades * 100)
+  - [x] 5.4 Calculate total profit/loss by summing all individual trade P/L
+  - [x] 5.5 Calculate net return percentage ((total P/L / starting balance) * 100)
+  - [x] 5.6 Format console output with clear section headers and aligned values
+  - [x] 5.7 Display backtest summary including: backtest period, total trades, winning/losing trades, winrate %, total P/L USD, net return %
+  - [x] 5.8 Handle zero trades scenario gracefully (display message if no breakouts detected)
+  - [x] 5.9 Create main execution block that orchestrates: MT5 connection → data retrieval → strategy creation → backtesting → results display → MT5 shutdown
+  - [x] 5.10 Add try-except-finally block to ensure MT5 shutdown is always called

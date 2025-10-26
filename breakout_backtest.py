@@ -594,3 +594,215 @@ class Backtester:
         print(f"Total trades executed: {len(self.trades)}")
         
         return self.trades
+    
+    def calculate_total_trades(self):
+        """
+        Calculate the total number of trades executed.
+        
+        Returns:
+            int: Total number of trades
+        """
+        return len(self.trades)
+    
+    def calculate_winning_losing_trades(self):
+        """
+        Calculate the number of winning and losing trades.
+        
+        A winning trade has profit_loss > 0, a losing trade has profit_loss <= 0.
+        
+        Returns:
+            tuple: (winning_trades, losing_trades) as integers
+        """
+        winning_trades = sum(1 for trade in self.trades if trade.profit_loss > 0)
+        losing_trades = sum(1 for trade in self.trades if trade.profit_loss <= 0)
+        return winning_trades, losing_trades
+    
+    def calculate_winrate(self):
+        """
+        Calculate the winrate percentage.
+        
+        Winrate = (winning trades / total trades) * 100
+        Returns 0.0 if no trades were executed.
+        
+        Returns:
+            float: Winrate percentage (0-100)
+        """
+        total_trades = self.calculate_total_trades()
+        if total_trades == 0:
+            return 0.0
+        
+        winning_trades, _ = self.calculate_winning_losing_trades()
+        return (winning_trades / total_trades) * 100.0
+    
+    def calculate_total_profit_loss(self):
+        """
+        Calculate the total profit/loss across all trades.
+        
+        Returns:
+            float: Total profit/loss in USD
+        """
+        return sum(trade.profit_loss for trade in self.trades)
+    
+    def calculate_net_return(self):
+        """
+        Calculate the net return percentage.
+        
+        Net return = (total P/L / starting balance) * 100
+        Returns 0.0 if starting balance is 0.
+        
+        Returns:
+            float: Net return percentage
+        """
+        if self.starting_balance == 0:
+            return 0.0
+        
+        total_pl = self.calculate_total_profit_loss()
+        return (total_pl / self.starting_balance) * 100.0
+    
+    def print_results(self):
+        """
+        Display comprehensive backtest results in formatted console output.
+        
+        Includes:
+        - Backtest period (start and end dates)
+        - Total trades executed
+        - Winning and losing trades breakdown
+        - Winrate percentage
+        - Total profit/loss in USD
+        - Final balance
+        - Net return percentage
+        
+        Handles zero trades scenario gracefully by displaying appropriate message.
+        """
+        print("\n")
+        print("=" * 60)
+        print("BACKTEST RESULTS")
+        print("=" * 60)
+        
+        # Backtest period
+        start_date = self.data.iloc[0]['time']
+        end_date = self.data.iloc[-1]['time']
+        print(f"\nBacktest Period:")
+        print(f"  Start: {start_date}")
+        print(f"  End:   {end_date}")
+        
+        # Check for zero trades scenario
+        total_trades = self.calculate_total_trades()
+        if total_trades == 0:
+            print(f"\nNo trades executed during backtest period.")
+            print(f"No breakout signals were detected with current strategy parameters.")
+            print(f"\nStarting Balance: ${self.starting_balance:,.2f}")
+            print(f"Final Balance:    ${self.balance:,.2f}")
+            print("=" * 60)
+            return
+        
+        # Trade statistics
+        winning_trades, losing_trades = self.calculate_winning_losing_trades()
+        winrate = self.calculate_winrate()
+        
+        print(f"\nTrade Statistics:")
+        print(f"  Total Trades:   {total_trades}")
+        print(f"  Winning Trades: {winning_trades}")
+        print(f"  Losing Trades:  {losing_trades}")
+        print(f"  Winrate:        {winrate:.2f}%")
+        
+        # Financial results
+        total_pl = self.calculate_total_profit_loss()
+        net_return = self.calculate_net_return()
+        
+        print(f"\nFinancial Results:")
+        print(f"  Starting Balance: ${self.starting_balance:,.2f}")
+        print(f"  Final Balance:    ${self.balance:,.2f}")
+        print(f"  Total P/L:        ${total_pl:,.2f}")
+        print(f"  Net Return:       {net_return:+.2f}%")
+        
+        print("=" * 60)
+
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+def main():
+    """
+    Main execution function that orchestrates the entire backtest workflow.
+    
+    Steps:
+    1. Initialize MT5 connection
+    2. Login to MT5 account (optional - requires credentials)
+    3. Validate symbol availability
+    4. Validate date range
+    5. Fetch historical data
+    6. Create strategy instance
+    7. Create backtester instance
+    8. Run backtest
+    9. Display results
+    10. Shutdown MT5 connection
+    
+    All steps include proper error handling with try-except-finally to ensure
+    MT5 connection is always closed properly.
+    """
+    try:
+        # Step 1: Initialize MT5
+        print("Initializing MetaTrader 5...")
+        if not initialize_mt5():
+            return
+        
+        # Step 2: Login (optional - comment out if using terminal's default account)
+        # Uncomment the following lines if you want to login to a specific account:
+        # if not login_mt5():
+        #     return
+        
+        # Step 3: Validate symbol
+        print(f"\nValidating symbol {SYMBOL}...")
+        if not validate_symbol(SYMBOL):
+            return
+        
+        # Step 4: Validate date range
+        print(f"\nValidating date range...")
+        if not validate_date_range(START_DATE, END_DATE):
+            return
+        
+        # Step 5: Fetch historical data
+        print(f"\nFetching historical data for {SYMBOL}...")
+        data = fetch_historical_data(SYMBOL, TIMEFRAME, START_DATE, END_DATE)
+        if data is None:
+            return
+        
+        # Step 6: Create strategy instance
+        print(f"\nCreating breakout strategy (lookback period: {LOOKBACK_PERIOD})...")
+        strategy = BreakoutStrategy(lookback_period=LOOKBACK_PERIOD)
+        
+        # Step 7: Create backtester instance
+        print(f"Creating backtester...")
+        backtester = Backtester(
+            strategy=strategy,
+            data=data,
+            starting_balance=STARTING_BALANCE,
+            position_size_pct=POSITION_SIZE_PCT
+        )
+        
+        # Step 8: Run backtest
+        print("\n" + "=" * 60)
+        print("RUNNING BACKTEST")
+        print("=" * 60 + "\n")
+        trades = backtester.run()
+        
+        # Step 9: Display results
+        backtester.print_results()
+        
+    except Exception as e:
+        print(f"\nERROR: An unexpected error occurred during backtest execution:")
+        print(f"  {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        # Step 10: Always shutdown MT5 connection
+        print("\nShutting down MT5 connection...")
+        shutdown_mt5()
+
+
+if __name__ == "__main__":
+    main()
+
