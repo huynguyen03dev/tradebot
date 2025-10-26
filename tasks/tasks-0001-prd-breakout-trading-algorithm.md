@@ -39,16 +39,16 @@ Generated from: `0001-prd-breakout-trading-algorithm.md`
   - [x] 3.6 Implement method to detect bearish breakout (close price < support level)
   - [x] 3.7 Create method to generate trading signals (BUY on bullish breakout, SELL on bearish breakout, None otherwise)
   - [x] 3.8 Add logic to prevent multiple signals while already in a position
-- [ ] 4.0 Build backtesting engine with trade simulation
-  - [ ] 4.1 Create `Backtester` class with initialization accepting strategy, data, starting_balance, and position_size_pct
-  - [ ] 4.2 Implement main backtest loop that iterates through historical candles
-  - [ ] 4.3 Add logic to track current position state (in_trade flag, current_trade object)
-  - [ ] 4.4 Implement trade entry logic: calculate position size based on balance percentage and current price
-  - [ ] 4.5 Implement exit strategy (exit on opposite signal per PRD recommendation)
-  - [ ] 4.6 Calculate profit/loss for each trade in USD (consider direction: BUY profit = (exit - entry) * size, SELL profit = (entry - exit) * size)
-  - [ ] 4.7 Store completed trades in a list for later analysis
-  - [ ] 4.8 Add progress indicator to show processing status (e.g., print every 500 candles)
-  - [ ] 4.9 Handle edge case where final trade is still open at backtest end (force close at last price)
+- [x] 4.0 Build backtesting engine with trade simulation
+  - [x] 4.1 Create `Backtester` class with initialization accepting strategy, data, starting_balance, and position_size_pct
+  - [x] 4.2 Implement main backtest loop that iterates through historical candles
+  - [x] 4.3 Add logic to track current position state (in_trade flag, current_trade object)
+  - [x] 4.4 Implement trade entry logic: calculate position size based on balance percentage and current price
+  - [x] 4.5 Implement exit strategy (exit on opposite signal per PRD recommendation)
+  - [x] 4.6 Calculate profit/loss for each trade in USD (consider direction: BUY profit = (exit - entry) * size, SELL profit = (entry - exit) * size)
+  - [x] 4.7 Store completed trades in a list for later analysis
+  - [x] 4.8 Add progress indicator to show processing status (e.g., print every 500 candles)
+  - [x] 4.9 Handle edge case where final trade is still open at backtest end (force close at last price)
 - [ ] 5.0 Implement results calculation and console output
   - [ ] 5.1 Create method to calculate total number of trades executed
   - [ ] 5.2 Create method to calculate number of winning trades (profit > 0) and losing trades (profit <= 0)

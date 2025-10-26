@@ -435,3 +435,162 @@ class BreakoutStrategy:
         
         # No breakout detected
         return None
+
+
+class Backtester:
+    """
+    Backtesting engine that simulates trading strategy on historical data.
+    
+    The backtester runs through historical price data, generates trading signals
+    using the provided strategy, executes simulated trades, and tracks performance.
+    
+    Attributes:
+        strategy (BreakoutStrategy): The trading strategy to backtest
+        data (pd.DataFrame): Historical price data with OHLC columns
+        starting_balance (float): Initial account balance in USD
+        position_size_pct (float): Percentage of balance to risk per trade
+        balance (float): Current account balance
+        trades (list): List of completed Trade objects
+        current_trade (Trade): Currently open trade (None if no open position)
+    """
+    
+    def __init__(self, strategy, data, starting_balance=10000.0, position_size_pct=2.0):
+        """
+        Initialize the backtester.
+        
+        Args:
+            strategy (BreakoutStrategy): Trading strategy instance to use for signal generation
+            data (pd.DataFrame): Historical price data with columns: time, open, high, low, close
+            starting_balance (float): Initial account balance in USD (default 10000.0)
+            position_size_pct (float): Percentage of balance to use per trade (default 2.0%)
+        """
+        self.strategy = strategy
+        self.data = data
+        self.starting_balance = starting_balance
+        self.position_size_pct = position_size_pct
+        self.balance = starting_balance
+        self.trades = []
+        self.current_trade = None
+    
+    def is_in_position(self):
+        """
+        Check if currently in an open position.
+        
+        Returns:
+            bool: True if there's an open trade, False otherwise
+        """
+        return self.current_trade is not None
+    
+    def enter_trade(self, entry_time, entry_price, direction):
+        """
+        Enter a new trade by creating a Trade object.
+        
+        Calculates position size based on the configured percentage of current balance
+        and the entry price. Position size represents the amount in USD to trade.
+        
+        Args:
+            entry_time (datetime): Timestamp when entering the trade
+            entry_price (float): Price at which to enter the trade
+            direction (str): Trade direction, either "BUY" or "SELL"
+        """
+        # Calculate position size in USD based on percentage of balance
+        position_size_usd = self.balance * (self.position_size_pct / 100.0)
+        
+        # For forex, position size is typically in units of the base currency
+        # Position size = USD amount / price
+        position_size = position_size_usd / entry_price
+        
+        # Create new trade
+        self.current_trade = Trade(entry_time, entry_price, direction, position_size)
+        
+        print(f"  ENTRY: {direction} at {entry_price:.5f} | Position: ${position_size_usd:.2f} ({position_size:.2f} units) | Time: {entry_time}")
+    
+    def exit_trade(self, exit_time, exit_price):
+        """
+        Exit the current open trade and update balance.
+        
+        Closes the trade at the specified price, calculates P/L, updates balance,
+        and adds the completed trade to the trades list.
+        
+        Args:
+            exit_time (datetime): Timestamp when exiting the trade
+            exit_price (float): Price at which to exit the trade
+        """
+        if self.current_trade is None:
+            print("ERROR: Attempted to exit trade when no position is open")
+            return
+        
+        # Close the trade and calculate P/L
+        self.current_trade.close(exit_time, exit_price)
+        
+        # Update balance with profit/loss
+        self.balance += self.current_trade.profit_loss
+        
+        # Add to completed trades list
+        self.trades.append(self.current_trade)
+        
+        # Print exit information
+        pl_str = f"+${self.current_trade.profit_loss:.2f}" if self.current_trade.profit_loss >= 0 else f"-${abs(self.current_trade.profit_loss):.2f}"
+        print(f"  EXIT:  {self.current_trade.direction} at {exit_price:.5f} | P/L: {pl_str} | Balance: ${self.balance:.2f} | Time: {exit_time}")
+        
+        # Clear current trade
+        self.current_trade = None
+    
+    def run(self):
+        """
+        Run the backtest by iterating through all historical candles.
+        
+        For each candle:
+        1. Generate trading signal from strategy
+        2. Execute entry if signal received and not in position
+        3. Execute exit if opposite signal received while in position
+        4. Track all completed trades
+        
+        Returns:
+            list: List of completed Trade objects
+        """
+        print(f"Starting backtest with {len(self.data)} candles...")
+        print(f"Initial balance: ${self.starting_balance:,.2f}")
+        print(f"Position size: {self.position_size_pct}% of balance")
+        print("-" * 60)
+        
+        # Iterate through each candle in the historical data
+        for i in range(len(self.data)):
+            # Show progress indicator every 500 candles
+            if i > 0 and i % 500 == 0:
+                print(f"Processing candle {i}/{len(self.data)}...")
+            
+            # Check if we're currently in a position
+            in_position = self.is_in_position()
+            
+            # Generate signal from strategy
+            signal = self.strategy.generate_signal(self.data, i, in_position)
+            
+            # Get current candle data
+            candle = self.data.iloc[i]
+            current_time = candle['time']
+            current_close = candle['close']
+            
+            # Trade entry logic: if signal received and not in position, enter trade
+            if signal is not None and not in_position:
+                self.enter_trade(current_time, current_close, signal)
+            
+            # Trade exit logic: exit on opposite signal
+            # If in position and receive opposite signal, close the trade
+            elif in_position and signal is not None:
+                # Check if signal is opposite to current trade direction
+                if (self.current_trade.direction == "BUY" and signal == "SELL") or \
+                   (self.current_trade.direction == "SELL" and signal == "BUY"):
+                    self.exit_trade(current_time, current_close)
+        
+        # Handle edge case: if trade is still open at end, force close at last price
+        if self.is_in_position():
+            last_candle = self.data.iloc[-1]
+            print(f"\n  Closing final open trade at last price...")
+            self.exit_trade(last_candle['time'], last_candle['close'])
+        
+        print("-" * 60)
+        print(f"Backtest complete. Processed {len(self.data)} candles.")
+        print(f"Total trades executed: {len(self.trades)}")
+        
+        return self.trades
