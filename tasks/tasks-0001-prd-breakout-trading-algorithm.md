@@ -21,15 +21,15 @@ Generated from: `0001-prd-breakout-trading-algorithm.md`
   - [x] 1.3 Define configuration constants at top of script (SYMBOL, TIMEFRAME, START_DATE, END_DATE, STARTING_BALANCE, POSITION_SIZE_PCT, LOOKBACK_PERIOD)
   - [x] 1.4 Set default configuration values (AUD/USD symbol, 5-minute timeframe, $10,000 balance, 2% position size, 20 candle lookback)
   - [x] 1.5 Add docstring explaining the script's purpose and configuration parameters
-- [ ] 2.0 Implement MT5 data retrieval and validation
-  - [ ] 2.1 Create MT5 initialization function following pattern from `mt5_btc_chart.py`
-  - [ ] 2.2 Add MT5 login functionality (handle credentials appropriately, consider environment variables)
-  - [ ] 2.3 Implement function to validate AUD/USD symbol availability using `mt5.symbol_select()`
-  - [ ] 2.4 Create function to fetch 5-minute historical data using `mt5.copy_rates_range()` with configured date range
-  - [ ] 2.5 Convert MT5 rates data to pandas DataFrame with proper datetime conversion
-  - [ ] 2.6 Add error handling for MT5 connection failures with `mt5.last_error()` calls
-  - [ ] 2.7 Add validation for date range (start < end) and data availability
-  - [ ] 2.8 Implement MT5 shutdown function to be called at script end
+- [x] 2.0 Implement MT5 data retrieval and validation
+  - [x] 2.1 Create MT5 initialization function following pattern from `mt5_btc_chart.py`
+  - [x] 2.2 Add MT5 login functionality (handle credentials appropriately, consider environment variables)
+  - [x] 2.3 Implement function to validate AUD/USD symbol availability using `mt5.symbol_select()`
+  - [x] 2.4 Create function to fetch 5-minute historical data using `mt5.copy_rates_range()` with configured date range
+  - [x] 2.5 Convert MT5 rates data to pandas DataFrame with proper datetime conversion
+  - [x] 2.6 Add error handling for MT5 connection failures with `mt5.last_error()` calls
+  - [x] 2.7 Add validation for date range (start < end) and data availability
+  - [x] 2.8 Implement MT5 shutdown function to be called at script end
 - [ ] 3.0 Implement breakout detection algorithm
   - [ ] 3.1 Create `Trade` class with attributes: entry_time, entry_price, exit_time, exit_price, direction (BUY/SELL), position_size, profit_loss
   - [ ] 3.2 Create `BreakoutStrategy` class with initialization method accepting lookback_period parameter
